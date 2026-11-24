@@ -6,20 +6,24 @@ use App\Enums\AppointmentStatus;
 use App\Models\Appointment;
 use App\Models\Scopes\BranchScope;
 use App\Services\SMSProvider\SMSProviderInterface;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Queue\Attributes\Backoff;
 use Illuminate\Queue\Attributes\Timeout;
 use Illuminate\Queue\Attributes\Tries;
+use Illuminate\Support\Facades\Log;
 use Throwable;
+
 #[Tries(3)]
 #[Backoff([10, 60])]
 #[Timeout(30)]
 
-class SendAppointmentReminderJob implements ShouldQueue
+class SendAppointmentReminderJob implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
+
+    public int $uniqueFor = 3600;
 
     /**
      * Create a new job instance.
@@ -27,6 +31,11 @@ class SendAppointmentReminderJob implements ShouldQueue
     public function __construct(public int $appointmentId)
     {
         $this->onQueue('reminders');
+    }
+
+    public function uniqueId(): string
+    {
+        return (string) $this->appointmentId;
     }
 
     /**
@@ -59,8 +68,9 @@ class SendAppointmentReminderJob implements ShouldQueue
 
         $smsProvider->send($appointment->patient->phone, $message);
     }
+
     public function failed(Throwable $exception): void
     {
-        Log::error("Failed to send reminder SMS for appointment ID [{$this->appointmentId}]: " . $exception->getMessage());
+        Log::error("Failed to send reminder SMS for appointment ID [{$this->appointmentId}]: ".$exception->getMessage());
     }
 }

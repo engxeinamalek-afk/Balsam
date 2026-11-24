@@ -42,10 +42,10 @@ class NoShowService
             ->where('status', AppointmentStatus::Booked)
             ->where(function ($q) use ($cutoffDate, $cutoffTime) {
                 $q->whereDate('appointment_date', '<', $cutoffDate)
-                  ->orWhere(function ($subQ) use ($cutoffDate, $cutoffTime) {
-                      $subQ->whereDate('appointment_date', '=', $cutoffDate)
-                           ->whereTime('start_time', '<=', $cutoffTime);
-                  });
+                    ->orWhere(function ($subQ) use ($cutoffDate, $cutoffTime) {
+                        $subQ->whereDate('appointment_date', '=', $cutoffDate)
+                            ->whereTime('start_time', '<=', $cutoffTime);
+                    });
             });
 
         if ($branchId) {

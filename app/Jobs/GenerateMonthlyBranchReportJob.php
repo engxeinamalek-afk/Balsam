@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Services\BranchReportService;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Attributes\Backoff;
@@ -14,17 +15,27 @@ use Throwable;
 #[Tries(2)]
 #[Timeout(1800)]
 #[Backoff(120)]
-class GenerateMonthlyBranchReportJob implements ShouldQueue
+class GenerateMonthlyBranchReportJob implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
     public int $uniqueFor = 2100;
+
     public function __construct(
         public readonly string $month,
         public readonly ?int $branchId = null,
         public readonly string $format = 'json'
     ) {
         $this->onQueue('reports');
+    }
+
+    public function uniqueId(): string
+    {
+        return implode(':', [
+            $this->month,
+            $this->branchId ?? 'all',
+            $this->format,
+        ]);
     }
 
     public function handle(BranchReportService $reportService): void
@@ -35,6 +46,6 @@ class GenerateMonthlyBranchReportJob implements ShouldQueue
 
     public function failed(Throwable $exception): void
     {
-        Log::error("Failed to generate monthly report for [{$this->month}]: " . $exception->getMessage());
+        Log::error("Failed to generate monthly report for [{$this->month}]: ".$exception->getMessage());
     }
 }

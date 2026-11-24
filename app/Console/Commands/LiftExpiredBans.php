@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\PatientBanService;
+use App\Traits\Console\Concerns\PreventsConcurrentExecution;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -13,45 +14,51 @@ use Illuminate\Console\Command;
 
 class LiftExpiredBans extends Command
 {
+    use PreventsConcurrentExecution;
+
     /**
      * Execute the console command.
      */
     public function handle(PatientBanService $patientBanService): int
     {
-        // 1. محاكاة الفشل لاختبار الجدولة والتنبيهات
-        if (config('app.simulate_command_failure', false)) {
-            $this->error('Simulated command failure triggered via .env!');
-            return self::FAILURE;
-        }
+        return $this->runWithCommandLock(function () use ($patientBanService): int {
+            // 1. محاكاة الفشل لاختبار الجدولة والتنبيهات
+            if (config('app.simulate_command_failure', false)) {
+                $this->error('Simulated command failure triggered via .env!');
 
-        $isDryRun = (bool) $this->option('run-dry');
+                return self::FAILURE;
+            }
 
-        // 2. تنبيه في حال وضع المحاكاة
-        if ($isDryRun) {
-            $this->warn('DRY-RUN MODE: Bans will not be lifted in the database.');
-        }
+            $isDryRun = (bool) $this->option('run-dry');
 
-        // 3. استدعاء طبقة الخدمة
-        $patients = $patientBanService->liftExpiredBans($isDryRun);
+            // 2. تنبيه في حال وضع المحاكاة
+            if ($isDryRun) {
+                $this->warn('DRY-RUN MODE: Bans will not be lifted in the database.');
+            }
 
-        if ($patients->isEmpty()) {
-            $this->info('No expired patient bans found.');
+            // 3. استدعاء طبقة الخدمة
+            $patients = $patientBanService->liftExpiredBans($isDryRun);
+
+            if ($patients->isEmpty()) {
+                $this->info('No expired patient bans found.');
+
+                return self::SUCCESS;
+            }
+
+            // 4. عرض المخرجات في جدول منظم
+            $rows = $patients->map(fn ($patient) => [
+                $patient->id,
+                $patient->name,
+                $patient->phone,
+                $patient->banned_until,
+            ])->toArray();
+
+            $this->table(['ID', 'Patient Name', 'Phone', 'Banned Until'], $rows);
+
+            $actionText = $isDryRun ? 'would have their ban lifted' : 'had their ban lifted successfully';
+            $this->info("Total {$patients->count()} patient(s) {$actionText}.");
+
             return self::SUCCESS;
-        }
-
-        // 4. عرض المخرجات في جدول منظم
-        $rows = $patients->map(fn ($patient) => [
-            $patient->id,
-            $patient->name,
-            $patient->phone,
-            $patient->banned_until,
-        ])->toArray();
-
-        $this->table(['ID', 'Patient Name', 'Phone', 'Banned Until'], $rows);
-
-        $actionText = $isDryRun ? 'would have their ban lifted' : 'had their ban lifted successfully';
-        $this->info("Total {$patients->count()} patient(s) {$actionText}.");
-
-        return self::SUCCESS;
+        });
     }
 }

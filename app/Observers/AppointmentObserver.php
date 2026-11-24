@@ -55,7 +55,6 @@ class AppointmentObserver
         $date = $appointment->appointment_date->format('Y-m-d');
         Cache::forget("doctor:{$appointment->doctor_id}:branch:{$appointment->branch_id}:available_slots:{$date}");
 
-
     }
 
     /**
@@ -71,7 +70,7 @@ class AppointmentObserver
             $date = $appointment->appointment_date->format('Y-m-d');
             Cache::forget("doctor:{$appointment->doctor_id}:branch:{$appointment->branch_id}:available_slots:{$date}");
         }
-        // نحديد اخر زيارة 
+        // نحديد اخر زيارة
         if ($appointment->wasChanged('status') && $appointment->status === AppointmentStatus::Arrived) {
             $patient = $appointment->patient;
             $patient->last_visit_at = now();
@@ -79,14 +78,10 @@ class AppointmentObserver
         }
         // (2) عند تغيّر status → no_show: تحديث
         if ($appointment->wasChanged('status') && $appointment->status === AppointmentStatus::NoShow) {
-            $recentNoShows = Appointment::withoutGlobalScope(BranchScope::class)
-                ->where('patient_id', $appointment->patient_id)
-                ->where('status', AppointmentStatus::NoShow)
-                ->where('appointment_date', '>=', now()->subMonth())
-                ->count();
+            $appointment->patient()->increment('no_show_count');
+            $patient = $appointment->patient()->first();
 
-            if ($recentNoShows >= 3) {
-                $patient = $appointment->patient;
+            if ($patient && $patient->no_show_count >= 3) {
                 $patient->banned_until = now()->addDays(30); // تأكد من مطابقة اسم العمود في جدول patients لديك
                 $patient->saveQuietly();
             }
@@ -97,7 +92,6 @@ class AppointmentObserver
                 'last_visit_at' => $appointment->appointment_date,
             ]);
         }
-
 
     }
 
